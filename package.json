@@ -1,0 +1,37 @@
+{
+  "name": "mcp-server-outlook",
+  "version": "1.0.0",
+  "description": "MCP server for Microsoft Outlook Calendar using COM Interop (Windows only)",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "mcp-server-outlook": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "outlook",
+    "calendar",
+    "windows",
+    "com"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2"
+  },
+  "os": [
+    "win32"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
