@@ -32,8 +32,15 @@ export class PowerShellBridge {
       // Add parameters
       for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== null && value !== '') {
-          args.push(`-${key}`);
-          args.push(String(value));
+          // For boolean switch parameters, only add the flag if true
+          if (typeof value === 'boolean') {
+            if (value === true) {
+              args.push(`-${key}`);
+            }
+          } else {
+            args.push(`-${key}`);
+            args.push(String(value));
+          }
         }
       }
 

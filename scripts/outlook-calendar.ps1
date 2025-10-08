@@ -3,7 +3,6 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet('list', 'get', 'create', 'update', 'delete', 'search')]
     [string]$Action,
 
     [string]$StartDate,
@@ -14,8 +13,11 @@ param(
     [string]$Location,
     [string]$Attendees,
     [string]$Query,
-    [bool]$IsAllDay = $false
+    [switch]$IsAllDay
 )
+
+# 出力エンコーディングをUTF-8に統一
+$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Error handling
 $ErrorActionPreference = 'Stop'
@@ -26,8 +28,7 @@ function Get-OutlookApplication {
         return $outlook
     }
     catch {
-        Write-Error "Failed to connect to Outlook. Make sure Outlook is installed and accessible."
-        exit 1
+        Write-Output (ConvertTo-JsonSafe -Object @{ error = "Failed to connect to Outlook. Make sure Outlook is installed and accessible."; type = $_.Exception.GetType().FullName })
     }
 }
 
@@ -53,19 +54,33 @@ function List-Events {
 
     $events = @()
 
+    $events = @()
     if ($StartDate -and $EndDate) {
-        $filter = "[Start] >= '$StartDate' AND [End] <= '$EndDate'"
-        $filteredItems = $items.Restrict($filter)
-        foreach ($item in $filteredItems) {
-            $events += @{
-                id = $item.EntryID
-                subject = $item.Subject
-                start = $item.Start.ToString("o")
-                end = $item.End.ToString("o")
-                location = $item.Location
-                body = $item.Body
-                isAllDay = $item.AllDayEvent
+        try {
+            # OutlookのRestrict用に日付をyyyy/MM/dd HH:mm形式に変換
+            $startDateObj = [datetime]::Parse($StartDate)
+            $endDateObj = [datetime]::Parse($EndDate)
+            $startStr = $startDateObj.ToString('yyyy/MM/dd HH:mm')
+            $endStr = $endDateObj.ToString('yyyy/MM/dd HH:mm')
+            $filter = "[End] >= '$startStr' AND [Start] <= '$endStr'"
+            $filteredItems = $items.Restrict($filter)
+            $count = 0
+            foreach ($item in $filteredItems) {
+                if ($count -ge 50) { break }
+                $events += @{
+                    id = $item.EntryID
+                    subject = $item.Subject
+                    start = $item.Start.ToString("o")
+                    end = $item.End.ToString("o")
+                    location = $item.Location
+                    body = $item.Body
+                    isAllDay = $item.AllDayEvent
+                }
+                $count++
             }
+        } catch {
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
+            Write-Output (ConvertTo-JsonSafe -Object @{ error = $_.Exception.Message; type = $_.Exception.GetType().FullName })
         }
     }
     else {
@@ -86,7 +101,8 @@ function List-Events {
     }
 
     [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
-    return ConvertTo-JsonSafe -Object $events
+    # 必ず空配列でもJSONを返す
+    Write-Output (ConvertTo-JsonSafe -Object $events)
 }
 
 function Get-Event {
@@ -115,8 +131,7 @@ function Get-Event {
     }
     catch {
         [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
-        Write-Error "Event not found: $EventId"
-        exit 1
+        Write-Output (ConvertTo-JsonSafe -Object @{ error = "Event not found: $EventId"; type = $_.Exception.GetType().FullName })
     }
 }
 
@@ -186,8 +201,7 @@ function Update-Event {
     }
     catch {
         [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
-        Write-Error "Failed to update event: $EventId"
-        exit 1
+        Write-Output (ConvertTo-JsonSafe -Object @{ error = "Failed to update event: $EventId"; type = $_.Exception.GetType().FullName })
     }
 }
 
@@ -211,8 +225,7 @@ function Delete-Event {
     }
     catch {
         [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
-        Write-Error "Failed to delete event: $EventId"
-        exit 1
+        Write-Output (ConvertTo-JsonSafe -Object @{ error = "Failed to delete event: $EventId"; type = $_.Exception.GetType().FullName })
     }
 }
 
@@ -241,27 +254,34 @@ function Search-Events {
     return ConvertTo-JsonSafe -Object $events
 }
 
+
 # Main execution
+$script:__outlook_calendar_ps1_output = $null
 try {
     switch ($Action) {
         'list' {
-            Write-Output (List-Events -StartDate $StartDate -EndDate $EndDate)
+            $script:__outlook_calendar_ps1_output = List-Events -StartDate $StartDate -EndDate $EndDate
         }
         'get' {
-            Write-Output (Get-Event -EventId $EventId)
+            $script:__outlook_calendar_ps1_output = Get-Event -EventId $EventId
         }
         'create' {
-            Write-Output (Create-Event -Subject $Subject -StartDate $StartDate -EndDate $EndDate -Body $Body -Location $Location -Attendees $Attendees -IsAllDay $IsAllDay)
+            $script:__outlook_calendar_ps1_output = Create-Event -Subject $Subject -StartDate $StartDate -EndDate $EndDate -Body $Body -Location $Location -Attendees $Attendees -IsAllDay $IsAllDay
         }
         'update' {
-            Write-Output (Update-Event -EventId $EventId -Subject $Subject -StartDate $StartDate -EndDate $EndDate -Body $Body -Location $Location)
+            $script:__outlook_calendar_ps1_output = Update-Event -EventId $EventId -Subject $Subject -StartDate $StartDate -EndDate $EndDate -Body $Body -Location $Location
         }
         'delete' {
-            Write-Output (Delete-Event -EventId $EventId)
+            $script:__outlook_calendar_ps1_output = Delete-Event -EventId $EventId
         }
         'search' {
-            Write-Output (Search-Events -Query $Query)
+            $script:__outlook_calendar_ps1_output = Search-Events -Query $Query
         }
+    }
+    if ($null -ne $script:__outlook_calendar_ps1_output -and $script:__outlook_calendar_ps1_output -ne "") {
+        Write-Output $script:__outlook_calendar_ps1_output
+    } else {
+        Write-Output (ConvertTo-JsonSafe -Object @())
     }
 }
 catch {
@@ -270,5 +290,4 @@ catch {
         type = $_.Exception.GetType().FullName
     }
     Write-Output (ConvertTo-JsonSafe -Object $errorObj)
-    exit 1
 }

@@ -180,46 +180,60 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
-    const { name, arguments: args } = request.params;
+    const { name, arguments: argsRaw } = request.params;
+    if (!argsRaw || typeof argsRaw !== 'object') {
+      throw new Error('Arguments are required and must be an object.');
+    }
+    const args = argsRaw as Record<string, any>;
     let result: any;
 
     switch (name) {
       case 'outlook_list_events':
-        result = await outlookClient.listEvents(args.startDate, args.endDate);
+        result = await outlookClient.listEvents(
+          typeof args.startDate === 'string' ? args.startDate : undefined,
+          typeof args.endDate === 'string' ? args.endDate : undefined
+        );
         break;
 
       case 'outlook_get_event':
+        if (typeof args.eventId !== 'string') throw new Error('eventId is required and must be a string');
         result = await outlookClient.getEvent(args.eventId);
         break;
 
       case 'outlook_create_event':
+        if (typeof args.subject !== 'string' || typeof args.start !== 'string' || typeof args.end !== 'string') {
+          throw new Error('subject, start, and end are required and must be strings');
+        }
         const newEvent: CalendarEvent = {
           subject: args.subject,
           start: args.start,
           end: args.end,
-          body: args.body,
-          location: args.location,
-          attendees: args.attendees,
-          isAllDay: args.isAllDay || false
+          body: typeof args.body === 'string' ? args.body : undefined,
+          location: typeof args.location === 'string' ? args.location : undefined,
+          attendees: Array.isArray(args.attendees) ? args.attendees : undefined,
+          isAllDay: typeof args.isAllDay === 'boolean' ? args.isAllDay : false
         };
         result = await outlookClient.createEvent(newEvent);
         break;
 
       case 'outlook_update_event':
+        if (typeof args.eventId !== 'string') throw new Error('eventId is required and must be a string');
         const updates: Partial<CalendarEvent> = {};
-        if (args.subject) updates.subject = args.subject;
-        if (args.start) updates.start = args.start;
-        if (args.end) updates.end = args.end;
-        if (args.body) updates.body = args.body;
-        if (args.location) updates.location = args.location;
+        if (typeof args.subject === 'string') updates.subject = args.subject;
+        if (typeof args.start === 'string') updates.start = args.start;
+        if (typeof args.end === 'string') updates.end = args.end;
+        if (typeof args.body === 'string') updates.body = args.body;
+        if (typeof args.location === 'string') updates.location = args.location;
         result = await outlookClient.updateEvent(args.eventId, updates);
         break;
 
       case 'outlook_delete_event':
+        if (typeof args.eventId !== 'string') throw new Error('eventId is required and must be a string');
         result = await outlookClient.deleteEvent(args.eventId);
         break;
 
       case 'outlook_search_events':
+        if (typeof args.query !== 'string') throw new Error('query is required and must be a string');
         result = await outlookClient.searchEvents(args.query);
         break;
 
