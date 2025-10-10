@@ -236,22 +236,38 @@ function Search-Events {
     $calendar = Get-CalendarFolder -Outlook $outlook
     $items = $calendar.Items
 
-    $filter = "[Subject] LIKE '%$Query%' OR [Body] LIKE '%$Query%'"
-    $results = $items.Restrict($filter)
-
-    $events = @()
-    foreach ($item in $results) {
-        $events += @{
-            id = $item.EntryID
-            subject = $item.Subject
-            start = $item.Start.ToString("o")
-            end = $item.End.ToString("o")
-            location = $item.Location
+    try {
+        # Outlookの検索では、部分一致検索を行う場合はRestrictではなく、
+        # 全アイテムをループして手動でフィルタリングする必要があります
+        $events = @()
+        $count = 0
+        
+        foreach ($item in $items) {
+            # 最大100件まで検索
+            if ($count -ge 100) { break }
+            
+            # 件名または本文にクエリが含まれているかチェック
+            if ($item.Subject -like "*$Query*" -or $item.Body -like "*$Query*") {
+                $events += @{
+                    id = $item.EntryID
+                    subject = $item.Subject
+                    start = $item.Start.ToString("o")
+                    end = $item.End.ToString("o")
+                    location = $item.Location
+                    body = $item.Body
+                    isAllDay = $item.AllDayEvent
+                }
+                $count++
+            }
         }
-    }
 
-    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
-    return ConvertTo-JsonSafe -Object $events
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
+        return ConvertTo-JsonSafe -Object $events
+    }
+    catch {
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
+        Write-Output (ConvertTo-JsonSafe -Object @{ error = $_.Exception.Message; type = $_.Exception.GetType().FullName })
+    }
 }
 
 
